@@ -44,6 +44,10 @@ const unpack = (b64: string | null): ChatMessage[] | null => (b64 ? JSON.parse(s
 // Schema: see db/schema.sql
 // ---------------------------------------------------------------------------
 const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null;
+if (!sql && process.env.VERCEL) {
+  // Vercel's filesystem is read-only and not shared between requests: the file store cannot work there.
+  console.error("[store] DATABASE_URL is not set on Vercel – add it in Project Settings > Environment Variables.");
+}
 
 type Row = { id: string; data: Omit<ChatRecord, "messages">; messages_gz: string | null };
 const fromRow = (r: Row): ChatRecord => ({ ...r.data, messages: unpack(r.messages_gz) });
@@ -53,7 +57,10 @@ const fromRow = (r: Row): ChatRecord => ({ ...r.data, messages: unpack(r.message
 // ---------------------------------------------------------------------------
 const DIR = process.env.DATA_DIR ?? path.join(process.cwd(), ".data");
 const chatsDir = path.join(DIR, "chats");
-const ensure = () => fs.mkdir(chatsDir, { recursive: true });
+const ensure = () => {
+  if (process.env.VERCEL) throw new Error("DATABASE_URL is not set");
+  return fs.mkdir(chatsDir, { recursive: true });
+};
 
 export async function saveChat(rec: ChatRecord): Promise<void> {
   if (sql) {
@@ -163,6 +170,7 @@ export async function issueOtp(email: string): Promise<string> {
       on conflict (email) do update set hash = excluded.hash, expires_at = excluded.expires_at, tries = 0`;
     return code;
   }
+  if (process.env.VERCEL) throw new Error("DATABASE_URL is not set");
   await fs.mkdir(DIR, { recursive: true });
   const all = await readOtp();
   all[e] = { hash: hash(e, code), exp: Date.now() + 10 * 60_000, tries: 0 };

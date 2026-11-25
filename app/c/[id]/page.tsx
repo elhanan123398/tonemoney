@@ -31,8 +31,8 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     for (let attempt = 0; attempt < 60; attempt++) {
       const r = await fetch(`/api/chats/${id}/report`, { method: "POST" });
       if (r.status === 202) { await new Promise((res) => setTimeout(res, 4000)); continue; }
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? "שגיאה");
+      const j = await r.json().catch(() => ({ error: "משהו השתבש אצלנו בשרת. רעננו את הדף בעוד דקה." }));
+      if (!r.ok || j.error) throw new Error(j.error ?? "שגיאה");
       setReport(j);
       return;
     }
@@ -86,7 +86,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   async function pay() {
     setPaying(true);
     const r = await fetch(`/api/chats/${id}/checkout`, { method: "POST" });
-    const j = await r.json();
+    const j = await r.json().catch(() => ({ error: "התשלום לא זמין כרגע. נסו שוב בעוד דקה." }));
     if (j.url) window.location.href = j.url;
     else { setErr(j.error ?? "שגיאה בתשלום"); setPaying(false); }
   }

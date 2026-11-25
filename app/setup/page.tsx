@@ -27,6 +27,15 @@ async function readChatFile(file: File): Promise<string> {
 
 const fmt = (n: number) => n.toLocaleString("he-IL");
 
+/** Reads a JSON reply; a crashed server returns an empty or HTML body, so never surface parser errors. */
+async function readJson(r: Response): Promise<{ error?: string; [k: string]: unknown }> {
+  try {
+    return await r.json();
+  } catch {
+    return { error: r.ok ? "תשובה לא צפויה מהשרת. נסו שוב." : "משהו השתבש אצלנו בשרת. נסו שוב בעוד דקה." };
+  }
+}
+
 function App({ children, q }: { children: ReactNode; q?: boolean }) {
   return <div className={`b app ${q ? "q" : ""}`}>{children}</div>;
 }
@@ -130,16 +139,16 @@ export default function Setup() {
     setBusy(true);
     try {
       const r = await fetch("/api/otp", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: e }) });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? "שגיאה");
+      const j = await readJson(r);
+      if (!r.ok || j.error) throw new Error(j.error ?? "שגיאה");
       setEmail(e);
       setDraft("");
       setCodeSent(true);
-      setDevCode(j.devCode ?? null);
+      setDevCode(typeof j.devCode === "string" ? j.devCode : null);
       setTyping(true);
       setTimeout(() => setTyping(false), 500);
     } catch (x) {
-      setErr(x instanceof Error ? x.message : "שגיאה");
+      setErr(x instanceof Error && /[\u0590-\u05FF]/.test(x.message) ? x.message : "אין חיבור לשרת. בדקו את האינטרנט ונסו שוב.");
     } finally {
       setBusy(false);
     }
@@ -161,11 +170,11 @@ export default function Setup() {
           answers: { relationship, source, names: finalNames, me, groupName, focus, spice, lang, email },
         }))),
       });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? "שגיאה");
+      const j = await readJson(r);
+      if (!r.ok || j.error) throw new Error(j.error ?? "שגיאה");
       router.push(`/c/${j.id}`);
     } catch (x) {
-      setErr(x instanceof Error ? x.message : "שגיאה");
+      setErr(x instanceof Error && /[\u0590-\u05FF]/.test(x.message) ? x.message : "אין חיבור לשרת. בדקו את האינטרנט ונסו שוב.");
       setCode("");
       setBusy(false);
     }
